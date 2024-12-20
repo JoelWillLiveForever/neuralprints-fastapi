@@ -169,3 +169,26 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Игнорировать виртуальное окружение
+venv/
+env/
+*.env
+
+# Игнорировать файлы, связанные с FastAPI и Uvicorn
+*.log
+*.sqlite3
+*.db
+
+# Игнорировать папку с миграциями Alembic (если используется)
+migrations/
+
+# Игнорировать файлы, созданные IDE (например, VS Code)
+.vscode/
+.idea/
+
+# Игнорировать кэшированные файлы Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
