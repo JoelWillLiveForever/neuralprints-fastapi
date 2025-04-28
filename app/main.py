@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from app.config import configure_cors  # Импортируем конфигурацию CORS
-from app.api import dataset, architecture  # Импортируем обработку эндпоинтов для архитектуры и датасета
+from app.api import dataset, architecture, tensorflow  # Импортируем обработку эндпоинтов для архитектуры и датасета
 
 # Инициализируем приложение
 app = FastAPI(
@@ -24,7 +24,11 @@ app = FastAPI(
         {
             "name": "Architecture",
             "description": "Управление архитектурой моделей"
-        }
+        },
+        {
+            "name": "TensorFlow",
+            "description": "Управление процессом обучения моделей"
+        },
     ]
 )
 
@@ -34,7 +38,8 @@ configure_cors(app)
 # Регистрируем эндпоинты
 app.include_router(dataset.router, prefix="/api/dataset")
 app.include_router(architecture.router, prefix="/api/architecture")
+app.include_router(tensorflow.router, prefix="/api/tensorflow")
 
 # === MAIN метод ===
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

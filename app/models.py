@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Union, Literal
+from typing import Union, Literal
 
 # === МОДЕЛИ ДЛЯ СЛОЁВ ===
 class InputLayerData(BaseModel):
@@ -71,7 +71,7 @@ Layer = Union[InputLayer, DenseLayer, DropoutLayer, GaussianDropoutLayer, Gaussi
 
 # === МОДЕЛЬ ВСЕЙ ОТПРАВКИ ===
 class ArchitecturePayload(BaseModel):
-    layers: List[Layer]
+    layers: list[Layer]
     train_split: float
     test_split: float
     validation_split: float
@@ -82,13 +82,17 @@ class ArchitecturePayload(BaseModel):
     batch_size: int
     enable_dataset_normalization: bool
     
+class UploadArchitectureRequest(BaseModel):
+    md5_client: str
+    payload: ArchitecturePayload
+    
     
 # === МОДЕЛЬ ЗАПРОСА НА ПОЛУЧЕНИЕ CSV ДАТАСЕТА ===
-class UploadDatasetPayload(BaseModel):
+class DatasetPayload(BaseModel):
     dataset_name: str
-    column_types: List[str]
+    column_types: list[str]
     csv_data: str # строка с данными CSV
 
 class UploadDatasetRequest(BaseModel):
-    md5: str
-    payload: UploadDatasetPayload
+    md5_client: str
+    payload: DatasetPayload

@@ -43,8 +43,8 @@ async def upload_dataset(request: UploadDatasetRequest):
         # Вычисляем MD5 на сервере
         md5_server = hashlib.md5(payload_string.encode('utf-8')).hexdigest()
         
-        if md5_server != request.md5:
-            logger.warning(f"MD5 mismatch: client={request.md5}, server={md5_server}")
+        if md5_server != request.md5_client:
+            logger.warning(f"MD5 mismatch: client={request.md5_client}, server={md5_server}")
             raise HTTPException(status_code=400, detail="MD5 mismatch")
         
         csv_data = request.payload.csv_data
@@ -66,7 +66,7 @@ async def upload_dataset(request: UploadDatasetRequest):
             logger.info(f"This dataset already exists: {file_location}")
             return JSONResponse(
                 status_code=208,  # 208 Already Reported
-                content={"md5": md5_server, "message": "Dataset already exists."}
+                content={"md5_server": md5_server, "message": "Dataset already exists."}
             )
         
         # Сохраняем CSV файл
@@ -85,7 +85,7 @@ async def upload_dataset(request: UploadDatasetRequest):
             json.dump(meta_data, meta_file, ensure_ascii=False, indent=2)
             
         logger.info(f"Dataset saved at {file_location}")
-        return {"md5": md5_server}
+        return {"md5_server": md5_server}
     
     except Exception as e:
         logger.error(f"Upload failed: {str(e)}")

@@ -1,36 +1,106 @@
-from fastapi import APIRouter, HTTPException
-from app.models import ArchitecturePayload
-from app.utils import calculate_md5_from_bytes
+import json
+import os
+import hashlib
+
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
+from app.models import UploadArchitectureRequest, ArchitecturePayload
+
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # ПАМЯТЬ СЕРВЕРА
-architecture = None
+# architecture = None
 
-@router.post("/architecture")
-async def receive_architecture(payload: ArchitecturePayload):
-    global architecture
-    if payload is None:
-        raise HTTPException(status_code=404, detail='Error: received architecture is "None"')
+# Путь для хранения файлов архитектур
+ARCHITECTURE_STORAGE_PATH = "./uploaded_architectures"
+
+# Убедимся, что папка для хранения архитектур существует
+os.makedirs(ARCHITECTURE_STORAGE_PATH, exist_ok=True)
+
+@router.post(
+    "/upload", 
+    tags=['Architecture'],
+    status_code=status.HTTP_201_CREATED, # 201 для успешного создания
+    summary="Получение архитектуры", 
+    description="Принимает архитектуру модели и сохраняет её на сервере."
+)
+async def receive_architecture(request: UploadArchitectureRequest):
+    """
+    Принимает архитектуру модели в формате JSON, сохраняет её в файл с хэш-именем и генерирует MD5 хеш.
+    """
     
-    architecture = payload
+    try:        
+        # Получаем словарь из Pydantic модели
+        payload_dict = request.payload.model_dump()
+        
+        # Сериализуем с сортировкой ключей и без пробелов
+        payload_string = json.dumps(
+            payload_dict,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            sort_keys=True  # Добавляем сортировку ключей
+        )
+        
+        # Создаем MD5 хеш для архитектуры
+        md5_server = hashlib.md5(payload_string.encode('utf-8')).hexdigest()
+        
+        if md5_server != request.md5_client:
+            logger.warning(f"MD5 mismatch: client={request.md5_client}, server={md5_server}, content={payload_string}")
+            raise HTTPException(status_code=400, detail="MD5 mismatch")
+    
+        # Генерируем путь для файла, основываясь на MD5 хеше
+        architecture_file_path = os.path.join(ARCHITECTURE_STORAGE_PATH, f"{md5_server}.meta.json")
+        
+        # Если файл уже существует
+        if os.path.exists(architecture_file_path):
+            # raise HTTPException(409, "Dataset already exists")
+            
+            logger.info(f"This architecture already exists: {architecture_file_path}")
+            return JSONResponse(
+                status_code=208,  # 208 Already Reported
+                content={"md5_server": md5_server, "message": "Architecture already exists."}
+            )
+        
+        # Сохраняем архитектуру в файл
+        with open(architecture_file_path, "w") as f:
+            # Используем ту же сериализацию, что и для хэша
+            f.write(payload_string)
+            
+        return {
+            "md5_server": md5_server
+        }
+        
+    except Exception as e:
+        logger.error(f"Architecture upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-    # Преобразуем payload в JSON-строку с использованием model_dump_json
-    payload_json = payload.model_dump_json(sort_keys=True)  # Используем новый метод model_dump_json
+@router.get(
+    "/download", 
+    tags=['Architecture'],
+    response_model=ArchitecturePayload, 
+    summary="Отправка архитектуры", 
+    description="Возвращает текущую архитектуру модели."
+)
+async def send_architecture(md5_hash: str):
+    """
+    Возвращает сохраненную архитектуру модели по хэшу.
 
-    # Используем функцию для вычисления MD5
-    md5_hash = calculate_md5_from_bytes(payload_json.encode('utf-8'))
-
-    return {
-        "status": "ok",
-        "message": "Architecture received successfully",
-        "md5": md5_hash
-    }
-
-@router.get("/architecture", response_model=ArchitecturePayload)
-async def send_architecture():
-    global architecture
-    if architecture is None:
-        raise HTTPException(status_code=404, detail='Error: architecture is "None"')
-
-    return architecture
+    Если архитектура не была получена, возвращает ошибку.
+    """
+    
+    # global architecture
+    # if architecture is None:
+    #     raise HTTPException(status_code=404, detail='Error: architecture is "None"')
+    
+    architecture_file_path = os.path.join(ARCHITECTURE_STORAGE_PATH, f"{md5_hash}.meta.json")
+    
+    if not os.path.exists(architecture_file_path):
+        raise HTTPException(status_code=404, detail="Error: architecture not found")
+    
+    with open(architecture_file_path, "r") as f:
+        architecture_data = json.load(f)
+    
+    return architecture_data
