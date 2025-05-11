@@ -3,6 +3,8 @@ import os
 # Environment variables
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+import nest_asyncio  # Импорт библиотеки для работы с вложенными циклами событий
+
 import uvicorn
 from fastapi import FastAPI
 
@@ -12,6 +14,9 @@ from app.api import dataset, architecture, tensorflow  # Импортируем 
 from app.websockets import sockets
 
 import logging
+
+# Применяем патч для вложенных циклов событий
+nest_asyncio.apply()
 
 # Настройка логирования
 logging.basicConfig(
@@ -69,16 +74,18 @@ app.include_router(dataset.router, prefix="/api/dataset")
 app.include_router(architecture.router, prefix="/api/architecture")
 app.include_router(tensorflow.router, prefix="/api/tensorflow")
 
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     # Очищаем соединения при завершении
-#     logger.debug('Вызван метод shutdown_event()')
-#     websocket_manager.active_connections.clear()
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Server starting up")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Server shutting down")
 
 # === MAIN метод ===
 def __main__():
     logger.debug('Вызван метод __main__()')
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, workers=1)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, workers=1, loop="asyncio", timeout_keep_alive=300)
 
 if __name__ == "__main__":
     __main__()

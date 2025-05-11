@@ -1,7 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import hashlib
 
+import asyncio
+
+from queue import Queue
+import threading
 from typing import Optional, Dict
 
 import numpy as np
@@ -35,43 +40,24 @@ class TrainingProgressCallback(keras.callbacks.Callback):
         super().__init__()
         self.websocket = websocket
         self.metric_name = metric_name
+        self.queue = Queue()
+        self.stop_event = threading.Event()
         
-    # def on_train_begin(self, logs=None):
-    #     logger.debug(f"Вызван метод on_train_begin(): logs = {logs}")
+        # Запускаем обработчик очереди в отдельном потоке
+        self.thread = threading.Thread(target=self._message_sender)
+        self.thread.start()
         
-    #     try:
-    #         metrics = self.params.get("metrics")
-    #         if not metrics:
-    #             raise ValueError("Метрики не определены в self.params['metrics']")
-    #         self.metric_name = metrics[0]
-    #         logger.debug(f"Метод on_train_begin() завершён: metric_name = {self.metric_name}")
-    #     except Exception as e:
-    #         logger.error(f"Ошибка в on_train_begin(): {e}")
-    #         self.metric_name = "accuracy"  # или что-то по умолчанию
-    
-    # def on_epoch_end(self, epoch, logs=None):
-    #     logger.debug(f"Вызван метод on_epoch_end(): epoch = {epoch}, logs = {logs}")
+    async def send_update(self, message: dict):
+        """
+        Отправка данных через WebSocket асинхронно.
+        """
+        await self.websocket.send_text(json.dumps(message))
         
-    #     message = {
-    #         "type": "training_update",
-    #         "epoch": epoch + 1,
-    #         "loss": logs.get("loss"),
-    #         "metric": logs.get(self.metric_name),
-    #         "val_loss": logs.get("val_loss"),
-    #         "val_metric": logs.get(f"val_{self.metric_name}"),
-    #         "metric_name": self.metric_name
-    #     }
-    #     logger.info(f"Сформирован пакет точек для построения графика на клиенте: message = {message}")
-        
-    #     # Отправляем данные через WebSocket, конвертируем в строку JSON
-    #     try:
-    #         message_str = json.dumps(message)  # Сериализуем в строку JSON
-    #         self.websocket.send_text(message_str)  # Передаем как строку JSON
-    #         logger.info(f"Завершен процесс отправки пакета точек")
-    #     except Exception as e:
-    #         logger.error(f"Ошибка при отправке сообщения через WebSocket: {str(e)}")
-        
-    #     logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
+    async def _async_send(self, message):
+        try:
+            await self.websocket.send_json(message)
+        except Exception as e:
+            logger.error(f"WebSocket error: {str(e)}")
     
     def on_epoch_end(self, epoch, logs=None):
         logger.debug(f"Вызван метод on_epoch_end(): epoch = {epoch}, logs = {logs}")
@@ -87,19 +73,39 @@ class TrainingProgressCallback(keras.callbacks.Callback):
         }
         logger.info(f"Сформирован пакет для клиента: message = {message}")
         
-        import asyncio
-        asyncio.create_task(self.websocket.send_text(json.dumps(message)));
+        # import asyncio
+        # asyncio.create_task(self.websocket.send_text(json.dumps(message)));
+        
+        # Проверяем, если цикл событий asyncio доступен
+        # if asyncio.get_event_loop().is_running():
+        #     # Если цикл событий уже запущен, используем asyncio.create_task
+        #     asyncio.create_task(self.send_update(message))
+        # else:
+        #     # Если цикл событий не запущен, запускаем асинхронную задачу напрямую
+        #     asyncio.run(self.send_update(message))
+        
+        # asyncio.run_coroutine_threadsafe(
+        #     self._async_send(message),
+        #     self.loop
+        # )
+        
+        self.queue.put(message)
+        
         logger.info(f"Пакет отправлен клиенту")
         
-        # # Отправляем данные через WebSocket с использованием websocket_manager
-        # try:
-        #     # Используем websocket_manager для отправки данных всем подключенным клиентам
-        #     self.websocket_manager.broadcast(json.dumps(message))  # Обратите внимание на await, так как это асинхронный метод
-        #     logger.info(f"Завершен процесс отправки пакета точек")
-        # except Exception as e:
-        #     logger.error(f"Ошибка при отправке сообщения через WebSocket: {str(e)}")
-        
         logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
+        
+    def _message_sender(self):
+        while not self.stop_event.is_set():
+            try:
+                message = self.queue.get(timeout=1)
+                asyncio.run(self.websocket.send_json(message))
+            except Exception as e:
+                logger.error(f"Ошибка отправки: {str(e)}")
+                
+    def on_train_end(self, logs=None):
+        self.stop_event.set()
+        self.thread.join()
 
 class ModelTrainer:
     def __init__(self):
@@ -481,18 +487,34 @@ class ModelTrainer:
             # === 8. Обучение модели ===
             logger.info(f"Начато обучение модели ИИ")
             
-            history = model.fit(
-                x_train, y_train,
-                epochs=architecture.epochs,
-                batch_size=architecture.batch_size,
-                validation_data=(x_val, y_val),
-                callbacks=[my_callback]
-            )
+            # history = model.fit(
+            #     x_train, y_train,
+            #     epochs=architecture.epochs,
+            #     batch_size=architecture.batch_size,
+            #     validation_data=(x_val, y_val),
+            #     callbacks=[my_callback]
+            # )
             
-            # финальное сообщение
-            await websocket.send_text(json.dumps({
-                "type": "training_complete"
-            }))
+            # # финальное сообщение
+            # await websocket.send_text(json.dumps({
+            #     "type": "training_complete"
+            # }))
+            
+            def train():
+                model.fit(
+                    x_train, y_train,
+                    epochs=architecture.epochs,
+                    batch_size=architecture.batch_size,
+                    validation_data=(x_val, y_val),
+                    callbacks=[my_callback]
+                )
+                
+            with ThreadPoolExecutor() as executor:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(executor, train)
+
+            # Отправка финального сообщения
+            await websocket.send_json({"type": "training_complete"})
             
             logger.info(f"Зарешено обучение модели ИИ")
             
@@ -510,7 +532,7 @@ class ModelTrainer:
             return {
                 "status": "success",
                 "model_hash": model_hash,
-                "history": history.history,
+                # "history": history.history,
                 "evaluation": evaluation
             }
             
