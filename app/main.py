@@ -1,3 +1,8 @@
+import os
+
+# Environment variables
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 import uvicorn
 from fastapi import FastAPI
 from app.config import configure_cors  # Импортируем конфигурацию CORS

@@ -35,6 +35,7 @@ async def receive_architecture(request: UploadArchitectureRequest):
     try:        
         # Получаем словарь из Pydantic модели
         payload_dict = request.payload.model_dump()
+        print(f'\n\nТекущая архитектура: ${payload_dict}\n\n')
         
         # Сериализуем с сортировкой ключей и без пробелов
         payload_string = json.dumps(

@@ -50,11 +50,41 @@ class ModelTrainer:
             
             elif layer_type == "TF_DENSE_LAYER_NODE":
                 model.add(keras.layers.Dense(
-                    units=data["tf_layer_neurons_count"],
-                    activation=data["tf_layer_activation_function"],
-                    use_bias=data["tf_layer_use_bias"],
-                    name=data["tf_layer_name"]
+                    name=data['tf_layer_name'],
+                    units=data['tf_layer_neurons_count'],
+                    activation=data['tf_layer_activation_function'],
+                    use_bias=data['tf_layer_use_bias']
                 ))
+                
+            elif layer_type == "TF_DROPOUT_LAYER_NODE":
+                model.add(keras.layers.Dropout(
+                    name=data["tf_layer_name"],
+                    rate=data['tf_layer_strength']
+                ))
+                
+            elif layer_type == "TF_GAUSSIAN_DROPOUT_LAYER_NODE":
+                model.add(keras.layers.GaussianDropout(
+                    name=data['tf_layer_name'],
+                    rate=data['tf_layer_strength']
+                ))
+                
+            elif layer_type == "TF_GAUSSIAN_NOISE_LAYER_NODE":
+                model.add(keras.layers.GaussianNoise(
+                    name=data['tf_layer_name'],
+                    stddev=data['tf_layer_stddev']
+                ))
+                
+            elif layer_type == "TF_CONV_2D_LAYER_NODE":
+                model.add(keras.layers.Conv2D(
+                    name=data['tf_layer_name'],
+                    filters=data['tf_layer_filters_count'],
+                    kernel_size=data['tf_layer_kernel_size'],
+                    activation=data['tf_layer_activation_function'],
+                    use_bias=data['tf_layer_use_bias']
+                ))
+                
+            elif layer_type == "TF_FLATTEN_LAYER_NODE":
+                model.add(keras.layers.Flatten())
                 
             # Добавьте обработку других типов слоев по аналогии
             

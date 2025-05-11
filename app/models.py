@@ -29,7 +29,7 @@ class FlattenLayerData(BaseModel):
 
 class Conv2DLayerData(BaseModel):
     tf_layer_name: str
-    lt_layer_filters_count: int
+    tf_layer_filters_count: int
     tf_layer_kernel_size: tuple[int, int]
     tf_layer_activation_function: str
     tf_layer_use_bias: bool
