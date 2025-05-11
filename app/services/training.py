@@ -15,12 +15,91 @@ from keras import Sequential
 from sklearn.model_selection import train_test_split
 
 from app.models import ArchitecturePayload
+# from app.websockets.websocket_manager import WebSocketManager
 
 import logging
-logger = logging.getLogger(__name__)
+
+from fastapi import WebSocket
+
+# Уникальный ключ логгера на этот файл
+LOGGER_KEY = "training.py"
+
+# Получение глобального логгера
+logger = logging.getLogger(LOGGER_KEY)
 
 MODELS_DIR = "./saved_models"
 os.makedirs(MODELS_DIR, exist_ok=True)
+
+class TrainingProgressCallback(keras.callbacks.Callback):
+    def __init__(self, websocket: WebSocket, metric_name):
+        super().__init__()
+        self.websocket = websocket
+        self.metric_name = metric_name
+        
+    # def on_train_begin(self, logs=None):
+    #     logger.debug(f"Вызван метод on_train_begin(): logs = {logs}")
+        
+    #     try:
+    #         metrics = self.params.get("metrics")
+    #         if not metrics:
+    #             raise ValueError("Метрики не определены в self.params['metrics']")
+    #         self.metric_name = metrics[0]
+    #         logger.debug(f"Метод on_train_begin() завершён: metric_name = {self.metric_name}")
+    #     except Exception as e:
+    #         logger.error(f"Ошибка в on_train_begin(): {e}")
+    #         self.metric_name = "accuracy"  # или что-то по умолчанию
+    
+    # def on_epoch_end(self, epoch, logs=None):
+    #     logger.debug(f"Вызван метод on_epoch_end(): epoch = {epoch}, logs = {logs}")
+        
+    #     message = {
+    #         "type": "training_update",
+    #         "epoch": epoch + 1,
+    #         "loss": logs.get("loss"),
+    #         "metric": logs.get(self.metric_name),
+    #         "val_loss": logs.get("val_loss"),
+    #         "val_metric": logs.get(f"val_{self.metric_name}"),
+    #         "metric_name": self.metric_name
+    #     }
+    #     logger.info(f"Сформирован пакет точек для построения графика на клиенте: message = {message}")
+        
+    #     # Отправляем данные через WebSocket, конвертируем в строку JSON
+    #     try:
+    #         message_str = json.dumps(message)  # Сериализуем в строку JSON
+    #         self.websocket.send_text(message_str)  # Передаем как строку JSON
+    #         logger.info(f"Завершен процесс отправки пакета точек")
+    #     except Exception as e:
+    #         logger.error(f"Ошибка при отправке сообщения через WebSocket: {str(e)}")
+        
+    #     logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
+    
+    def on_epoch_end(self, epoch, logs=None):
+        logger.debug(f"Вызван метод on_epoch_end(): epoch = {epoch}, logs = {logs}")
+        
+        message = {
+            "type": "training_update",
+            "epoch": epoch + 1,
+            "loss": logs.get("loss"),
+            "metric": logs.get(self.metric_name),
+            "val_loss": logs.get("val_loss"),
+            "val_metric": logs.get(f"val_{self.metric_name}"),
+            "metric_name": self.metric_name
+        }
+        logger.info(f"Сформирован пакет для клиента: message = {message}")
+        
+        import asyncio
+        asyncio.create_task(self.websocket.send_text(json.dumps(message)));
+        logger.info(f"Пакет отправлен клиенту")
+        
+        # # Отправляем данные через WebSocket с использованием websocket_manager
+        # try:
+        #     # Используем websocket_manager для отправки данных всем подключенным клиентам
+        #     self.websocket_manager.broadcast(json.dumps(message))  # Обратите внимание на await, так как это асинхронный метод
+        #     logger.info(f"Завершен процесс отправки пакета точек")
+        # except Exception as e:
+        #     logger.error(f"Ошибка при отправке сообщения через WebSocket: {str(e)}")
+        
+        logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
 
 class ModelTrainer:
     def __init__(self):
@@ -249,15 +328,15 @@ class ModelTrainer:
         dataset_name: str,
         architecture_name: str
     ) -> Dict:
-        """Основной метод для обучения модели"""
+        logger.debug(f"Вызван метод train_model(): dataset_name = {dataset_name}, architecture_name = {architecture_name}")
         
         try:
             # === 1. Загрузка датасета и метаинформации ===
             data, column_types = self.load_dataset_and_meta(dataset_name)
-            logger.info(f"Dataset and column types loaded: {dataset_name}")
+            logger.info(f"Датасет и типы его столбцов загружены: {dataset_name}")
             
             architecture = self.load_architecture(architecture_name)
-            logger.info(f"Architecture loaded: {architecture_name}")
+            logger.info(f"Архитектура модели загружена: {architecture_name}")
             
             # === 2. Предобработка данных ===
             processed_data = self.preprocess_data(data, architecture, column_types)
@@ -282,11 +361,11 @@ class ModelTrainer:
                 val_size=architecture.validation_split,
                 test_size=architecture.test_split
             )
-            logger.info(f"Dataset split into train/val/test successfully")
+            logger.info(f"Датасет разбит на train/val/test выборки")
             
             # === 5. Построение модели ===
             model = self.build_model(architecture)
-            logger.info(f"Model built successfully")
+            logger.info(f"Завершена сборка модели ИИ")
             
             # === 6. Компиляция модели ===
             model.compile(
@@ -294,28 +373,38 @@ class ModelTrainer:
                 loss=architecture.loss_function,
                 metrics=[architecture.quality_metric]
             )
-            logger.info(f"Model compiled successfully")
+            logger.info(f"Завершена компиляция модели ИИ")
             
-            # === 7. Обучение модели ===
+            # === 7. Кастомные коллбэки ===
+            # my_callbacks = []
+            # if websocket_manager.active_connections:
+            #     my_callbacks.append(TrainingProgressCallback())
+            # logger.info(f"Завершена настройка кастомного коллбэка: my_callbacks = {my_callbacks}")          
+            
+            # === 8. Обучение модели ===
+            logger.info(f"Начато обучение модели ИИ")
+            
             history = model.fit(
                 x_train, y_train,
                 epochs=architecture.epochs,
                 batch_size=architecture.batch_size,
                 validation_data=(x_val, y_val)
+                # callbacks=[TrainingProgressCallback()]
             )
-            logger.info(f"Model trained successfully")
             
-            # === 8. Оценка модели на тестовых данных ===
+            logger.info(f"Зарешено обучение модели ИИ")
+            
+            # === 9. Оценка модели на тестовых данных ===
             evaluation = model.evaluate(x_test, y_test)
-            logger.info(f"Model evaluated successfully")
+            logger.info(f"Завершен анализ качества предсказаний модели ИИ")
             
-            # === 9. Сохранение модели ===
+            # === 10. Сохранение модели ===
             model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
             model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
             model.save(model_path)
-            logger.info(f"Model saved: {model_path}")
+            logger.info(f"Модель ИИ сохранена по пути: {model_path}")
             
-            # === 10. Возврат результата ===
+            # === 11. Возврат результата ===
             return {
                 "status": "success",
                 "model_hash": model_hash,
@@ -324,5 +413,118 @@ class ModelTrainer:
             }
             
         except Exception as e:
-            logger.error(f"Training failed: {str(e)}")
+            logger.error(f"Ошибка при обучении модели в методе train_model(): {str(e)}")
+            
+            # websocket_manager.broadcast(json.dumps({
+            #     "type": "error",
+            #     "message": str(e)
+            # }))
             return {"status": "error", "message": str(e)}
+    
+    async def train_model_ws(
+        self,
+        dataset_name: str,
+        architecture_name: str,
+        websocket: WebSocket
+    ) -> Dict:
+        logger.debug(f"Вызван метод train_model_ws(): dataset_name = {dataset_name}, architecture_name = {architecture_name}, websocket = {websocket}")
+        
+        try:
+            # === 1. Загрузка датасета и метаинформации ===
+            data, column_types = self.load_dataset_and_meta(dataset_name)
+            logger.info(f"Датасет и типы его столбцов загружены: {dataset_name}")
+            
+            architecture = self.load_architecture(architecture_name)
+            logger.info(f"Архитектура модели загружена: {architecture_name}")
+            
+            # === 2. Предобработка данных ===
+            processed_data = self.preprocess_data(data, architecture, column_types)
+            
+            # Сохраняем DataFrame в CSV
+            # processed_data.to_csv('debug.csv', index=False)  # index=False не записывает индекс в файл
+            
+            # === 3. Разделение на X (признаки) и y (цель) ===
+            X, y = self.prepare_features_and_target(processed_data, column_types)
+            
+            # X.to_csv('X.csv', index=False)
+            # y.to_csv('y.csv', index=False)
+            
+            # === 4. Разбивка на Train/Validation/Test ===
+            (
+                x_train, y_train,
+                x_val, y_val,
+                x_test, y_test
+            ) = self.split_dataset(
+                X, y,
+                train_size=architecture.train_split,
+                val_size=architecture.validation_split,
+                test_size=architecture.test_split
+            )
+            logger.info(f"Датасет разбит на train/val/test выборки")
+            
+            # === 5. Построение модели ===
+            model = self.build_model(architecture)
+            logger.info(f"Завершена сборка модели ИИ")
+            
+            # === 6. Компиляция модели ===
+            model.compile(
+                optimizer=architecture.optimizer,
+                loss=architecture.loss_function,
+                metrics=[architecture.quality_metric]
+            )
+            logger.info(f"Завершена компиляция модели ИИ")
+            
+            # === 7. Создание кастомного коллбэка ===
+            my_callback = TrainingProgressCallback(websocket=websocket, metric_name=architecture.quality_metric)      
+            logger.info(f"Завершена создание кастомного коллбэка: my_callback = {my_callback}")  
+            
+            # === 8. Обучение модели ===
+            logger.info(f"Начато обучение модели ИИ")
+            
+            history = model.fit(
+                x_train, y_train,
+                epochs=architecture.epochs,
+                batch_size=architecture.batch_size,
+                validation_data=(x_val, y_val),
+                callbacks=[my_callback]
+            )
+            
+            # финальное сообщение
+            await websocket.send_text(json.dumps({
+                "type": "training_complete"
+            }))
+            
+            logger.info(f"Зарешено обучение модели ИИ")
+            
+            # === 9. Оценка модели на тестовых данных ===
+            evaluation = model.evaluate(x_test, y_test)
+            logger.info(f"Завершен анализ качества предсказаний модели ИИ")
+            
+            # === 10. Сохранение модели ===
+            model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
+            model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
+            model.save(model_path)
+            logger.info(f"Модель ИИ сохранена по пути: {model_path}")
+            
+            # === 11. Возврат результата ===
+            return {
+                "status": "success",
+                "model_hash": model_hash,
+                "history": history.history,
+                "evaluation": evaluation
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обучении модели в методе train_model(): {str(e)}")
+            
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": str(e)
+            }))
+            
+            return {"status": "error", "message": str(e)}
+        
+        
+        
+        
+        

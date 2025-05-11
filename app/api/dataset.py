@@ -5,10 +5,15 @@ import hashlib
 import json
 import os
 
-from ..models import UploadDatasetRequest
+from app.models import UploadDatasetRequest
 
 import logging
-logger = logging.getLogger(__name__)
+
+# Уникальный ключ логгера на этот файл
+LOGGER_KEY = "dataset.py"
+
+# Получение глобального логгера
+logger = logging.getLogger(LOGGER_KEY)
 
 router = APIRouter()
 
@@ -44,7 +49,7 @@ async def upload_dataset(request: UploadDatasetRequest):
         md5_server = hashlib.md5(payload_string.encode('utf-8')).hexdigest()
         
         if md5_server != request.md5_client:
-            logger.warning(f"MD5 mismatch: client={request.md5_client}, server={md5_server}")
+            logger.error(f"Хэши MD5 датасета не совпадают: client = {request.md5_client}, server = {md5_server}")
             raise HTTPException(status_code=400, detail="MD5 mismatch")
         
         csv_data = request.payload.csv_data
@@ -63,7 +68,7 @@ async def upload_dataset(request: UploadDatasetRequest):
         if os.path.exists(file_location):
             # raise HTTPException(409, "Dataset already exists")
             
-            logger.info(f"This dataset already exists: {file_location}")
+            # logger.debug(f"Датасет с таким именем уже присутствует: {file_location}")
             return JSONResponse(
                 status_code=208,  # 208 Already Reported
                 content={"md5_server": md5_server, "message": "Dataset already exists."}
@@ -84,11 +89,11 @@ async def upload_dataset(request: UploadDatasetRequest):
         with open(meta_file_location, "w", encoding="utf-8") as meta_file:
             json.dump(meta_data, meta_file, ensure_ascii=False, indent=2)
             
-        logger.info(f"Dataset saved at {file_location}")
+        logger.info(f"Датасет сохранён по пути: {file_location}")
         return {"md5_server": md5_server}
     
     except Exception as e:
-        logger.error(f"Upload failed: {str(e)}")
+        logger.error(f"Ошибка при загрузке датасета: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Эндпоинт для скачивания CSV файла по MD5 хешу

@@ -4,10 +4,16 @@ import hashlib
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
+
 from app.models import UploadArchitectureRequest, ArchitecturePayload
 
 import logging
-logger = logging.getLogger(__name__)
+
+# Уникальный ключ логгера на этот файл
+LOGGER_KEY = "architecture.py"
+
+# Получение глобального логгера
+logger = logging.getLogger(LOGGER_KEY)
 
 router = APIRouter()
 
@@ -49,7 +55,7 @@ async def receive_architecture(request: UploadArchitectureRequest):
         md5_server = hashlib.md5(payload_string.encode('utf-8')).hexdigest()
         
         if md5_server != request.md5_client:
-            logger.warning(f"MD5 mismatch: client={request.md5_client}, server={md5_server}, content={payload_string}")
+            logger.error(f"Хэши MD5 архитектуры ИИ не совпадают: client = {request.md5_client}, server = {md5_server}, content = {payload_string}")
             raise HTTPException(status_code=400, detail="MD5 mismatch")
     
         # Генерируем путь для файла, основываясь на MD5 хеше
@@ -59,7 +65,7 @@ async def receive_architecture(request: UploadArchitectureRequest):
         if os.path.exists(architecture_file_path):
             # raise HTTPException(409, "Dataset already exists")
             
-            logger.info(f"This architecture already exists: {architecture_file_path}")
+            # logger.info(f"This architecture already exists: {architecture_file_path}")
             return JSONResponse(
                 status_code=208,  # 208 Already Reported
                 content={"md5_server": md5_server, "message": "Architecture already exists."}
@@ -75,7 +81,7 @@ async def receive_architecture(request: UploadArchitectureRequest):
         }
         
     except Exception as e:
-        logger.error(f"Architecture upload failed: {str(e)}")
+        logger.error(f"Ошибка при загрузке архитектуры ИИ: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get(
