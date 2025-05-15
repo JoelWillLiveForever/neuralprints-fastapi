@@ -5,8 +5,6 @@ import hashlib
 
 import asyncio
 
-from queue import Queue
-import threading
 from typing import Optional, Dict
 
 import numpy as np
@@ -37,32 +35,13 @@ MODELS_DIR = "./saved_models"
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 class TrainingProgressCallback(keras.callbacks.Callback):
-    def __init__(self, websocket: WebSocket, metric_name):
+    def __init__(self, websocket: WebSocket, loop: asyncio.AbstractEventLoop, metric_name: str):
         super().__init__()
         self.websocket = websocket
+        self.loop = loop
         self.metric_name = metric_name
-        self.queue = Queue()
-        self.stop_event = threading.Event()
         
-        # Запускаем обработчик очереди в отдельном потоке
-        self.thread = threading.Thread(target=self._message_sender)
-        self.thread.start()
-        
-    async def send_update(self, message: dict):
-        """
-        Отправка данных через WebSocket асинхронно.
-        """
-        await self.websocket.send_text(json.dumps(message))
-        
-    async def _async_send(self, message):
-        try:
-            await self.websocket.send_json(message)
-        except Exception as e:
-            logger.error(f"WebSocket error: {str(e)}")
-    
     def on_epoch_end(self, epoch, logs=None):
-        logger.debug(f"Вызван метод on_epoch_end(): epoch = {epoch}, logs = {logs}")
-        
         message = {
             "type": "training_update",
             "current_epoch": epoch + 1,
@@ -71,24 +50,17 @@ class TrainingProgressCallback(keras.callbacks.Callback):
             "training_user_metric": logs.get(self.metric_name),
             "validation_user_metric": logs.get(f"val_{self.metric_name}"),
         }
-        logger.info(f"Сформирован пакет для клиента: message = {message}")
         
-        self.queue.put(message)
-        logger.info(f"Пакет отправлен клиенту")
+        # Запускаем корутину отправки в основном event-loop
+        fut = asyncio.run_coroutine_threadsafe(
+            self.websocket.send_json(message),
+            self.loop
+        )
         
-        logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
-        
-    def _message_sender(self):
-        while not self.stop_event.is_set():
-            try:
-                message = self.queue.get(timeout=1)
-                asyncio.run(self.websocket.send_json(message))
-            except Exception as e:
-                logger.error(f"Ошибка отправки: {str(e)}")
-                
-    def on_train_end(self, logs=None):
-        self.stop_event.set()
-        self.thread.join()
+        try:
+            fut.result(timeout=1)
+        except Exception as e:
+            logger.error(f"WS send failed: {e}")
 
 class ModelTrainer:
     def __init__(self):
@@ -417,6 +389,7 @@ class ModelTrainer:
         websocket: WebSocket
     ) -> Dict:
         logger.debug(f"Вызван метод train_model_ws(): dataset_name = {dataset_name}, architecture_name = {architecture_name}, websocket = {websocket}")
+        await websocket.send_json({"type": "training_started"})
         
         try:
             # === 1. Загрузка датасета и метаинформации ===
@@ -463,74 +436,63 @@ class ModelTrainer:
             )
             logger.info(f"Завершена компиляция модели ИИ")
             
-            # === 7. Создание кастомного коллбэка ===
-            my_callback = TrainingProgressCallback(websocket=websocket, metric_name=architecture.quality_metric)      
-            logger.info(f"Завершена создание кастомного коллбэка: my_callback = {my_callback}")  
-            
-            # === 8. Обучение модели ===
+            # === 7. Обучение модели ===
             logger.info(f"Начато обучение модели ИИ")
             
-            # history = model.fit(
-            #     x_train, y_train,
-            #     epochs=architecture.epochs,
-            #     batch_size=architecture.batch_size,
-            #     validation_data=(x_val, y_val),
-            #     callbacks=[my_callback]
-            # )
+            loop = asyncio.get_running_loop()
+            callback = TrainingProgressCallback(
+                websocket=websocket,
+                loop=loop,
+                metric_name=architecture.quality_metric
+            )
             
-            # # финальное сообщение
-            # await websocket.send_text(json.dumps({
-            #     "type": "training_complete"
-            # }))
-            
-            def train():
+            def _fit():
                 model.fit(
                     x_train, y_train,
                     epochs=architecture.epochs,
                     batch_size=architecture.batch_size,
                     validation_data=(x_val, y_val),
-                    callbacks=[my_callback]
+                    callbacks=[callback]
                 )
                 
-            with ThreadPoolExecutor() as executor:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(executor, train)
+            # Запускаем учёбу в другом потоке
+            with ThreadPoolExecutor() as pool:
+                await loop.run_in_executor(pool, _fit)
 
             # Отправка финального сообщения
             # await websocket.send_json({"type": "training_complete"})
             
-            logger.info(f"Зарешено обучение модели ИИ")
+            logger.info(f"Завершено обучение модели ИИ")
             
-            # === 9. Оценка модели ===
+            # === 8. Оценка модели ===
             logger.info("Начата оценка модели на тестовых данных")
             
-            # --- 9.1. Предсказания на train, test, val ---
+            # --- 8.1. Предсказания на train, test, val ---
             train_pred_probs = model.predict(x_train)
             test_pred_probs = model.predict(x_test)
             val_pred_probs = model.predict(x_val)
             
-            # --- 9.2. Преобразование вероятностей в метки ---
+            # --- 8.2. Преобразование вероятностей в метки ---
             train_preds = (train_pred_probs > 0.5).astype("int32").flatten()
             test_preds = (test_pred_probs > 0.5).astype("int32").flatten()
             val_preds = (val_pred_probs > 0.5).astype("int32").flatten()
             
-            # --- 9.3. Истинные метки (если one-hot, возьми [:, 0]) ---
+            # --- 8.3. Истинные метки (если one-hot, возьми [:, 0]) ---
             y_train_true = y_train.flatten()
             y_test_true = y_test.flatten()
             y_val_true = y_val.flatten()
             
-            # --- 9.4. Loss и Accuracy (Keras .evaluate) ---
+            # --- 8.4. Loss и Accuracy (Keras .evaluate) ---
             train_loss, train_acc = model.evaluate(x_train, y_train, verbose=0)
             test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
             val_loss, val_acc = model.evaluate(x_val, y_val, verbose=0)
             
-            # --- 9.5. Метрики через sklearn ---
+            # --- 8.5. Метрики через sklearn ---
             precision = precision_score(y_test_true, test_preds)
             recall = recall_score(y_test_true, test_preds)
             f1 = f1_score(y_test_true, test_preds)
             auc = roc_auc_score(y_test_true, test_pred_probs)  # Используем именно вероятности
             
-            # evaluation_result = model.evaluate(x_test, y_test, return_dict=True)
             logger.info(f"Завершена оценка модели на тестовых данных")
             
             # Отправка результатов оценки клиенту
@@ -551,19 +513,12 @@ class ModelTrainer:
                 "final_auc_roc": auc
             })
             
-            # === 10. Сохранение модели ===
+            # === 9. Сохранение модели ===
             model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
             model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
             model.save(model_path)
-            logger.info(f"Модель ИИ сохранена по пути: {model_path}")
             
-            # === 11. Возврат результата ===
-            return {
-                "status": "success",
-                "model_hash": model_hash,
-                # "history": history.history,
-                # "evaluation": evaluation_result
-            }
+            logger.info(f"Модель ИИ сохранена по пути: {model_path}")
             
         except Exception as e:
             logger.error(f"Ошибка при обучении модели в методе train_model(): {str(e)}")
@@ -572,8 +527,6 @@ class ModelTrainer:
                 "type": "error",
                 "message": str(e)
             }))
-            
-            return {"status": "error", "message": str(e)}
         
         
         
