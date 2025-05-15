@@ -18,6 +18,7 @@ import keras
 # from keras import layers
 from keras import Sequential
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, accuracy_score
 
 from app.models import ArchitecturePayload
 # from app.websockets.websocket_manager import WebSocketManager
@@ -64,33 +65,15 @@ class TrainingProgressCallback(keras.callbacks.Callback):
         
         message = {
             "type": "training_update",
-            "epoch": epoch + 1,
-            "loss": logs.get("loss"),
-            "metric": logs.get(self.metric_name),
-            "val_loss": logs.get("val_loss"),
-            "val_metric": logs.get(f"val_{self.metric_name}"),
-            "metric_name": self.metric_name
+            "current_epoch": epoch + 1,
+            "training_loss": logs.get("loss"),
+            "validation_loss": logs.get("val_loss"),
+            "training_user_metric": logs.get(self.metric_name),
+            "validation_user_metric": logs.get(f"val_{self.metric_name}"),
         }
         logger.info(f"Сформирован пакет для клиента: message = {message}")
         
-        # import asyncio
-        # asyncio.create_task(self.websocket.send_text(json.dumps(message)));
-        
-        # Проверяем, если цикл событий asyncio доступен
-        # if asyncio.get_event_loop().is_running():
-        #     # Если цикл событий уже запущен, используем asyncio.create_task
-        #     asyncio.create_task(self.send_update(message))
-        # else:
-        #     # Если цикл событий не запущен, запускаем асинхронную задачу напрямую
-        #     asyncio.run(self.send_update(message))
-        
-        # asyncio.run_coroutine_threadsafe(
-        #     self._async_send(message),
-        #     self.loop
-        # )
-        
         self.queue.put(message)
-        
         logger.info(f"Пакет отправлен клиенту")
         
         logger.debug(f"Метод on_epoch_end() завершён: logs = {logs}, message = {message}")
@@ -514,13 +497,59 @@ class ModelTrainer:
                 await loop.run_in_executor(executor, train)
 
             # Отправка финального сообщения
-            await websocket.send_json({"type": "training_complete"})
+            # await websocket.send_json({"type": "training_complete"})
             
             logger.info(f"Зарешено обучение модели ИИ")
             
-            # === 9. Оценка модели на тестовых данных ===
-            evaluation = model.evaluate(x_test, y_test)
-            logger.info(f"Завершен анализ качества предсказаний модели ИИ")
+            # === 9. Оценка модели ===
+            logger.info("Начата оценка модели на тестовых данных")
+            
+            # --- 9.1. Предсказания на train, test, val ---
+            train_pred_probs = model.predict(x_train)
+            test_pred_probs = model.predict(x_test)
+            val_pred_probs = model.predict(x_val)
+            
+            # --- 9.2. Преобразование вероятностей в метки ---
+            train_preds = (train_pred_probs > 0.5).astype("int32").flatten()
+            test_preds = (test_pred_probs > 0.5).astype("int32").flatten()
+            val_preds = (val_pred_probs > 0.5).astype("int32").flatten()
+            
+            # --- 9.3. Истинные метки (если one-hot, возьми [:, 0]) ---
+            y_train_true = y_train.flatten()
+            y_test_true = y_test.flatten()
+            y_val_true = y_val.flatten()
+            
+            # --- 9.4. Loss и Accuracy (Keras .evaluate) ---
+            train_loss, train_acc = model.evaluate(x_train, y_train, verbose=0)
+            test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
+            val_loss, val_acc = model.evaluate(x_val, y_val, verbose=0)
+            
+            # --- 9.5. Метрики через sklearn ---
+            precision = precision_score(y_test_true, test_preds)
+            recall = recall_score(y_test_true, test_preds)
+            f1 = f1_score(y_test_true, test_preds)
+            auc = roc_auc_score(y_test_true, test_pred_probs)  # Используем именно вероятности
+            
+            # evaluation_result = model.evaluate(x_test, y_test, return_dict=True)
+            logger.info(f"Завершена оценка модели на тестовых данных")
+            
+            # Отправка результатов оценки клиенту
+            await websocket.send_json({
+                "type": "training_complete",
+                
+                "final_train_accuracy": train_acc,
+                "final_test_accuracy": test_acc,
+                "final_validation_accuracy": val_acc,
+                
+                "final_train_loss": train_loss,
+                "final_test_loss": test_loss,
+                "final_validation_loss": val_loss,
+                
+                "final_precision": precision,
+                "final_recall": recall,
+                "final_f1_score": f1,
+                "final_auc_roc": auc
+            })
             
             # === 10. Сохранение модели ===
             model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
@@ -533,7 +562,7 @@ class ModelTrainer:
                 "status": "success",
                 "model_hash": model_hash,
                 # "history": history.history,
-                "evaluation": evaluation
+                # "evaluation": evaluation_result
             }
             
         except Exception as e:
