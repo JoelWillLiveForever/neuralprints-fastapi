@@ -73,17 +73,26 @@ class TrainingProgressCallback(keras.callbacks.Callback):
         ms_per_step = int(per_step * 1000)
         timing_str = f"{sec}s {ms_per_step}ms/step"
         
+        prefix = f"[{timestamp}] "
+        epoch_info = f"Epoch {epoch+1}/{self.all_epochs}"
+        timing_line = f"{timing_str} ——— "
+
+        # Кол-во пробелов = длина prefix
+        indent = " " * len(prefix)
+
+        formatted_log = (
+            f"{prefix}{epoch_info}\n{indent}{timing_line}"
+            f"{self.metric_name}: {logs.get(self.metric_name):.4f} — "
+            f"loss: {logs.get('loss'):.4f} — "
+            f"val_{self.metric_name}: {logs.get(f'val_{self.metric_name}'):.4f} — "
+            f"val_loss: {logs.get('val_loss'):.4f}"
+        )
+        
         # 3) Формируем сообщение лога с меткой времени
         asyncio.run_coroutine_threadsafe(
             self.websocket.send_json({
                 "type": "log", 
-                "log_message": (
-                    f"[{timestamp}] Epoch {epoch+1}/{self.all_epochs}\n{timing_str} ——— "
-                    f"{self.metric_name}: {logs.get(self.metric_name):.4f} — "
-                    f"loss: {logs.get('loss'):.4f} — "
-                    f"val_{self.metric_name}: {logs.get(f'val_{self.metric_name}'):.4f} — "
-                    f"val_loss: {logs.get('val_loss'):.4f}"
-                )
+                "log_message": formatted_log,
             }),
             self.loop
         )
