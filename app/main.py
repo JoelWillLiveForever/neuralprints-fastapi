@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import os
 
 # Environment variables
@@ -34,6 +35,15 @@ LOGGER_KEY = "main.py"
 # Получение глобального логгера
 logger = logging.getLogger(LOGGER_KEY)
 
+# Логгер подключен в Lifespan
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Код при старте приложения
+    logger.info("Server starting up")
+    yield
+    # Код при остановке приложения
+    logger.info("Server shutting down")
+
 # Инициализируем приложение
 app = FastAPI(
     title="NeuralPrints API",
@@ -60,7 +70,8 @@ app = FastAPI(
             "name": "TensorFlow",
             "description": "Управление процессом обучения моделей"
         },
-    ]
+    ],
+    lifespan=lifespan,
 )
 
 # Настроить CORS (если необходимо)
@@ -73,14 +84,6 @@ app.include_router(sockets.router)
 app.include_router(dataset.router, prefix="/api/dataset")
 app.include_router(architecture.router, prefix="/api/architecture")
 app.include_router(tensorflow.router, prefix="/api/tensorflow")
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Server starting up")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Server shutting down")
 
 # === MAIN метод ===
 def __main__():
