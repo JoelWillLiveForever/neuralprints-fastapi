@@ -1,10 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import json
 import os
 import hashlib
 
 import asyncio
 
+import time
 from typing import Optional, Dict
 
 import numpy as np
@@ -35,13 +37,58 @@ MODELS_DIR = "./saved_models"
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 class TrainingProgressCallback(keras.callbacks.Callback):
-    def __init__(self, websocket: WebSocket, loop: asyncio.AbstractEventLoop, metric_name: str):
+    def __init__(self, websocket: WebSocket, loop: asyncio.AbstractEventLoop, all_epochs: int, metric_name: str):
         super().__init__()
         self.websocket = websocket
         self.loop = loop
+        self.all_epochs = all_epochs
         self.metric_name = metric_name
         
+        self.epoch_start_time = None
+        
+    def on_epoch_begin(self, epoch, logs=None):
+        # Запоминаем момент начала эпохи
+        self.epoch_start_time = time.monotonic()
+        
     def on_epoch_end(self, epoch, logs=None):
+        # 1) Получаем текущий момент в ISO‑формате UTC
+        now = datetime.now(timezone.utc).astimezone()  # локальный часовой пояс
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 2) Вычисляем timing_str
+        # Сколько длилась эпоха
+        elapsed = time.monotonic() - self.epoch_start_time  # seconds as float
+        
+        # Число шагов за эпоху можно взять из params
+        num_steps = self.params.get('steps', None)
+        if num_steps is None:
+            # fallback: 
+            num_steps = logs.get('size', 0) # self.params.get('batch_size', 1)
+            
+        # Время на один шаг (batch)
+        per_step = elapsed / num_steps if num_steps else 0  # seconds
+        
+        # Форматируем в строку вида "0s 2ms/step"
+        sec = int(elapsed)
+        ms_per_step = int(per_step * 1000)
+        timing_str = f"{sec}s {ms_per_step}ms/step"
+        
+        # 3) Формируем сообщение лога с меткой времени
+        asyncio.run_coroutine_threadsafe(
+            self.websocket.send_json({
+                "type": "log", 
+                "log_message": (
+                    f"[{timestamp}] Epoch {epoch+1}/{self.all_epochs}\n{timing_str} ——— "
+                    f"{self.metric_name}: {logs.get(self.metric_name):.4f} — "
+                    f"loss: {logs.get('loss'):.4f} — "
+                    f"val_{self.metric_name}: {logs.get(f'val_{self.metric_name}'):.4f} — "
+                    f"val_loss: {logs.get('val_loss'):.4f}"
+                )
+            }),
+            self.loop
+        )
+        
+        # основная инфа
         message = {
             "type": "training_update",
             "current_epoch": epoch + 1,
@@ -52,13 +99,13 @@ class TrainingProgressCallback(keras.callbacks.Callback):
         }
         
         # Запускаем корутину отправки в основном event-loop
-        fut = asyncio.run_coroutine_threadsafe(
+        fit = asyncio.run_coroutine_threadsafe(
             self.websocket.send_json(message),
             self.loop
         )
         
         try:
-            fut.result(timeout=1)
+            fit.result(timeout=1)
         except Exception as e:
             logger.error(f"WS send failed: {e}")
 
@@ -443,6 +490,7 @@ class ModelTrainer:
             callback = TrainingProgressCallback(
                 websocket=websocket,
                 loop=loop,
+                all_epochs = architecture.epochs,
                 metric_name=architecture.quality_metric
             )
             
