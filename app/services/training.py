@@ -192,8 +192,8 @@ class ModelTrainer:
     def load_dataset_and_meta(self, dataset_name: str) -> tuple[pd.DataFrame, list[str]]:
         """Загружает датасет и информацию о типах колонок"""
         
-        dataset_path = os.path.join("./uploaded_datasets", f"{dataset_name}.csv")
-        meta_path = os.path.join("./uploaded_datasets", f"{dataset_name}.meta.json")
+        dataset_path = os.path.join("./uploaded_datasets", f"{dataset_name}")
+        meta_path = os.path.join("./uploaded_datasets", f"{os.path.splitext(dataset_name)[0]}.meta.json")
         
         if not os.path.exists(dataset_path):
             raise FileNotFoundError("Dataset not found")
@@ -571,7 +571,13 @@ class ModelTrainer:
             })
             
             # === 9. Сохранение модели ===
+            logger.info(f'dataset_name = {dataset_name}')
+            logger.info(f'architecture_name = {architecture_name}')
+                
             model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
+            
+            logger.info(f'model_hash = {model_hash}')
+            
             model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
             model.save(model_path)
             
