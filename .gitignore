@@ -197,3 +197,7 @@ __pycache__/
 *.h5
 *.meta.json
 *.csv
+
+saved_models/
+uploaded_architectures/
+uploaded_datasets/
