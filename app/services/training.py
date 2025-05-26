@@ -573,15 +573,24 @@ class ModelTrainer:
             # === 9. Сохранение модели ===
             logger.info(f'dataset_name = {dataset_name}')
             logger.info(f'architecture_name = {architecture_name}')
-                
+
             model_hash = hashlib.md5(f"{architecture_name}{dataset_name}".encode()).hexdigest()
-            
             logger.info(f'model_hash = {model_hash}')
-            
-            model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
-            model.save(model_path)
-            
-            logger.info(f"Модель ИИ сохранена по пути: {model_path}")
+
+            # Сохранение в .keras
+            keras_path = os.path.join(MODELS_DIR, f"{model_hash}.keras")
+            model.save(keras_path)
+            logger.info(f"Модель (.keras) сохранена: {keras_path}")
+
+            # Сохранение в .h5 (если нужно по заданию)
+            h5_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
+            model.save(h5_path)
+            logger.info(f"Модель (.h5) сохранена: {h5_path}")
+
+            # Сохранение в SavedModel
+            saved_model_dir = os.path.join(MODELS_DIR, f"{model_hash}_savedmodel")
+            model.export(saved_model_dir)
+            logger.info(f"SavedModel экспортирован в: {saved_model_dir}")
             
         except Exception as e:
             logger.error(f"Ошибка при обучении модели в методе train_model(): {str(e)}")

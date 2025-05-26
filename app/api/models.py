@@ -1,6 +1,8 @@
 import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+import shutil
+import tempfile
 import logging
 
 # Уникальный ключ логгера на этот файл
@@ -28,6 +30,47 @@ async def download_model_h5(model_hash: str):
         filename=f"{model_hash}.h5",
         media_type="application/octet-stream"
     )
+    
+@router.get(
+    "/{model_hash}/download/keras",
+    tags=['Models'],
+)
+async def download_model_keras(model_hash: str):
+    logger.info(f"[KERAS] model_hash = {model_hash}")
+
+    file_path = os.path.join(MODELS_DIR, f"{model_hash}.keras")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Keras model not found")
+
+    return FileResponse(
+        path=file_path,
+        filename=f"{model_hash}.keras",
+        media_type="application/octet-stream"
+    )
+    
+@router.get(
+    "/{model_hash}/download/savedmodel",
+    tags=['Models'],
+)
+async def download_saved_model(model_hash: str):
+    logger.info(f"[SavedModel] model_hash = {model_hash}")
+
+    model_dir = os.path.join(MODELS_DIR, f"{model_hash}_savedmodel")
+    if not os.path.exists(model_dir):
+        raise HTTPException(status_code=404, detail="SavedModel directory not found")
+
+    # Временный файл архива
+    temp_dir = tempfile.mkdtemp()
+    archive_path = os.path.join(temp_dir, f"{model_hash}_savedmodel.zip")
+
+    # Упаковываем модель в zip
+    shutil.make_archive(archive_path.replace('.zip', ''), 'zip', model_dir)
+
+    return FileResponse(
+        path=archive_path,
+        filename=f"{model_hash}_savedmodel.zip",
+        media_type="application/zip"
+    )
 
 # @router.get(
 #     "/executable/python/{model_hash}",
@@ -36,37 +79,3 @@ async def download_model_h5(model_hash: str):
 # )
 # async def get_model(model_hash: str):
 #     pass
-
-# @router.get(
-#     "/status/{model_hash}",
-#     tags=['TensorFlow'],
-#     response_model=dict
-# )
-# async def get_model_status(model_hash: str):
-#     """
-#     Эндпоинт для получения статуса модели по её хэшу.
-#     """
-#     try:
-#         # Здесь можно добавить логику для проверки состояния модели, если это необходимо.
-#         # Например, может быть хранилище или база данных для отслеживания процесса.
-#         # В примере просто возвращаем статус как успешный.
-#         return {"status": "success", "model_hash": model_hash}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error while retrieving status: {str(e)}")
-    
-# @router.get(
-#     "/model/{model_hash}",
-#     tags=['TensorFlow'],
-#     response_model=dict
-# )
-# async def get_model(model_hash: str):
-#     """
-#     Эндпоинт для получения модели по её хэшу.
-#     """
-#     try:
-#         model_path = os.path.join(MODELS_DIR, f"{model_hash}.h5")
-#         if not os.path.exists(model_path):
-#             raise HTTPException(status_code=404, detail="Model not found")
-#         return {"status": "success", "model_path": model_path}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error while retrieving model: {str(e)}")
