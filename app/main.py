@@ -67,10 +67,10 @@ app = FastAPI(
             "name": "Architecture",
             "description": "Управление архитектурой моделей"
         },
-        {
-            "name": "TensorFlow",
-            "description": "Управление процессом обучения моделей"
-        },
+        # {
+        #     "name": "TensorFlow",
+        #     "description": "Управление процессом обучения моделей"
+        # },
         {
             "name": "Models",
             "description": "Управление процессом экспорта моделей"
@@ -92,7 +92,7 @@ app.include_router(sockets.router)
 # Регистрируем эндпоинты
 app.include_router(dataset.router, prefix="/api/dataset")
 app.include_router(architecture.router, prefix="/api/architecture")
-app.include_router(tensorflow.router, prefix="/api/tensorflow")
+# app.include_router(tensorflow.router, prefix="/api/tensorflow")
 app.include_router(models.router, prefix="/api/models")
 app.include_router(executables.router, prefix="/api/executables")
 
