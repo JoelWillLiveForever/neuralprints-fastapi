@@ -71,11 +71,3 @@ async def download_saved_model(model_hash: str):
         filename=f"{model_hash}_savedmodel.zip",
         media_type="application/zip"
     )
-
-# @router.get(
-#     "/executable/python/{model_hash}",
-#     tags=['TensorFlow'],
-#     response_model=dict
-# )
-# async def get_model(model_hash: str):
-#     pass

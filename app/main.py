@@ -10,7 +10,8 @@ import uvicorn
 from fastapi import FastAPI
 
 from app.config import configure_cors  # Импортируем конфигурацию CORS
-from app.api import dataset, architecture, tensorflow, models  # Импортируем обработку эндпоинтов для архитектуры и датасета
+from app.api import dataset, architecture, executables, tensorflow, models  # Импортируем обработку эндпоинтов для архитектуры и датасета
+
 # from app.websockets.websocket_manager import websocket_manager
 from app.websockets import sockets
 
@@ -74,6 +75,10 @@ app = FastAPI(
             "name": "Models",
             "description": "Управление процессом экспорта моделей"
         },
+        {
+            "name": "Executables",
+            "description": "Управление процессом экспорта исполняемых файлов"
+        },
     ],
     lifespan=lifespan,
 )
@@ -89,6 +94,7 @@ app.include_router(dataset.router, prefix="/api/dataset")
 app.include_router(architecture.router, prefix="/api/architecture")
 app.include_router(tensorflow.router, prefix="/api/tensorflow")
 app.include_router(models.router, prefix="/api/models")
+app.include_router(executables.router, prefix="/api/executables")
 
 # === MAIN метод ===
 def __main__():
