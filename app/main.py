@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NeuralPrints API",
     description="API для обучения нейросетевых моделей",
-    version="0.0.1",
+    version="1.0.0",
     contact={
         "name": "Vladimir (aBLeeWeeAN)",
         "email": "mail.jorey@gmail.com",
