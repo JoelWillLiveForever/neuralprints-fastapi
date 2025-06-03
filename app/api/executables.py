@@ -11,19 +11,23 @@ from fastapi.responses import FileResponse
 # Уникальный ключ логгера на этот файл
 LOGGER_KEY = "executables.py"
 
-MODELS_DIR = "./saved_models"
-TEMPLATES_DIR = "./app/templates"
-
 # BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # api/ → project_root/
 # TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 # MODELS_DIR = os.path.join(BASE_DIR, "saved_models")
+
+MODELS_DIR = "./saved_models"
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+TEMPLATES_DIR = "./app/templates"
+os.makedirs(TEMPLATES_DIR, exist_ok=True)
+
+TMP_ZIP_DIR = "./temp_zips"
+os.makedirs(TMP_ZIP_DIR, exist_ok=True)
 
 # Получение глобального логгера
 logger = logging.getLogger(LOGGER_KEY)
 router = APIRouter()
 
-TMP_ZIP_DIR = os.path.join(MODELS_DIR, "tmp_zips")
-os.makedirs(TMP_ZIP_DIR, exist_ok=True)
 
 @router.get(
     "/{model_hash}/download/python",

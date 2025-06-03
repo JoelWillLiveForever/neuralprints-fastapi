@@ -18,9 +18,10 @@ logger = logging.getLogger(LOGGER_KEY)
 router = APIRouter()
 
 UPLOAD_DIRECTORY = "./uploaded_datasets"
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
-if not os.path.exists(UPLOAD_DIRECTORY):
-    os.makedirs(UPLOAD_DIRECTORY)
+# if not os.path.exists(UPLOAD_DIRECTORY):
+#     os.makedirs(UPLOAD_DIRECTORY)
 
 # Эндпоинт для загрузки CSV файла
 @router.post(

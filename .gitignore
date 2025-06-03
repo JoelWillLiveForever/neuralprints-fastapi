@@ -201,3 +201,6 @@ __pycache__/
 saved_models/
 uploaded_architectures/
 uploaded_datasets/
+processed_datasets/
+processed_csv/
+temp_zips/

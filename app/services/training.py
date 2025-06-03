@@ -36,6 +36,9 @@ logger = logging.getLogger(LOGGER_KEY)
 MODELS_DIR = "./saved_models"
 os.makedirs(MODELS_DIR, exist_ok=True)
 
+PROCESSED_CSV_DIR = "./processed_csv"
+os.makedirs(PROCESSED_CSV_DIR, exist_ok=True)
+
 class TrainingProgressCallback(keras.callbacks.Callback):
     def __init__(self, websocket: WebSocket, loop: asyncio.AbstractEventLoop, all_epochs: int, metric_name: str):
         super().__init__()
@@ -458,8 +461,12 @@ class ModelTrainer:
             # === 2. Предобработка данных ===
             processed_data = self.preprocess_data(data, architecture, column_types)
             
-            # Сохраняем DataFrame в CSV
-            # processed_data.to_csv('debug.csv', index=False)  # index=False не записывает индекс в файл
+            # Сохраняем обработанный DataFrame в CSV
+            processed_filename = f"{dataset_name}_processed.csv"
+            processed_path = os.path.join(PROCESSED_CSV_DIR, processed_filename)
+            
+            # Сохранение DataFrame в CSV
+            processed_data.to_csv(processed_path, index=False, encoding="utf-8")
             
             # === 3. Разделение на X (признаки) и y (цель) ===
             X, y = self.prepare_features_and_target(processed_data, column_types)

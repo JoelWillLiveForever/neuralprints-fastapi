@@ -7,11 +7,12 @@ import logging
 
 # Уникальный ключ логгера на этот файл
 LOGGER_KEY = "models.py"
+
 MODELS_DIR = "./saved_models"
+os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Получение глобального логгера
 logger = logging.getLogger(LOGGER_KEY)
-
 router = APIRouter()
     
 @router.get(

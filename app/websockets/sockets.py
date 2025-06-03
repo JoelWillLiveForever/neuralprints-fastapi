@@ -11,7 +11,6 @@ LOGGER_KEY = "sockets.py"
 
 # Получение глобального логгера
 logger = logging.getLogger(LOGGER_KEY)
-
 router = APIRouter()
 
 @router.websocket("/ws/train")

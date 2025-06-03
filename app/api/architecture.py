@@ -22,9 +22,7 @@ router = APIRouter()
 
 # Путь для хранения файлов архитектур
 ARCHITECTURE_STORAGE_PATH = "./uploaded_architectures"
-
-# Убедимся, что папка для хранения архитектур существует
-os.makedirs(ARCHITECTURE_STORAGE_PATH, exist_ok=True)
+os.makedirs(ARCHITECTURE_STORAGE_PATH, exist_ok=True) # Убедимся, что папка для хранения архитектур существует
 
 @router.post(
     "/upload", 
